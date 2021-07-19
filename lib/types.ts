@@ -1,5 +1,22 @@
 import { Signale } from 'signale';
 
+export interface TransitionTo {
+  [key: string]: any,
+  name: string,
+}
+
+export interface Transition {
+  id: number | string,
+  name: string,
+  [key: string]: any,
+  to: TransitionTo
+}
+
+export interface ITransition {
+  expand: string,
+  transitions: Transition[]
+}
+
 export interface PluginContext {
   cwd: string;
   env: {
@@ -53,10 +70,22 @@ export interface BaseConfig {
   branch: string;
   debug: boolean;
   dryRun: boolean;
+  envCi: {
+    [key: string]: any
+  }
 }
 
 export const DEFAULT_VERSION_TEMPLATE = 'v${version}';
 export const DEFAULT_RELEASE_DESCRIPTION_TEMPLATE = 'Automated release with semantic-release-jira-releases https://git.io/JvAbj';
+export const DEFAULT_JIRA_COMMENT = "This ticket is moved to ${newState}"
+
+export interface JiraTransitions {
+  [key: string]: {
+    originState: string | number,
+    targetState: string | number,
+    comment?: string,
+  }
+}
 
 export interface PluginConfig extends BaseConfig {
   /**
@@ -117,4 +146,10 @@ export interface PluginConfig extends BaseConfig {
    * include the release date when creating a release in jira
    */
   setReleaseDate?: boolean;
+  /**
+    * determines whether the found tickets needs to be transitioned
+    * the key of the object has to be a branchname where the release was initiated
+    * @default `v${branch}`
+  */
+  jiraTransitions?: JiraTransitions
 }

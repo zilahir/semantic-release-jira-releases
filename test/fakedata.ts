@@ -72,5 +72,8 @@ export const context: GenerateNotesContext = {
   ...pluginContext,
   commits,
   lastRelease: previousRelease,
-  nextRelease: upcomingRelease
+  nextRelease: upcomingRelease,
+  env: {
+    JIRA_AUTH: 'cmljaGFyZC56aWxhaGlAdmFyam8uY29tOjNJdzdOUFFMcUFZaUpweUpXUGRGNDBFQw=='
+  }
 }

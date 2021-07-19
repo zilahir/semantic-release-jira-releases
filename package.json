@@ -1,8 +1,8 @@
 {
-  "name": "semantic-release-jira-releases",
-  "version": "0.7.2",
+  "name": "@zilahir/semantic-release-jira-releases",
+  "version": "0.7.36",
   "main": "dist/lib/index.js",
-  "repository": "https://github.com/UpHabit/semantic-release-jira-releases",
+  "repository": "https://github.com/ziahir/semantic-release-jira-releases",
   "license": "MIT",
   "private": false,
   "scripts": {

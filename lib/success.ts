@@ -32,7 +32,7 @@ export function getTickets(config: PluginConfig, context: GenerateNotesContext):
   return [...tickets];
 }
 
-async function findOrCreateVersion(config: PluginConfig, context: GenerateNotesContext, jira: JiraClient, projectIdOrKey: string, name: string, description: string): Promise<Version> {
+async function findOrCreateVersion(config: PluginConfig, context: GenerateNotesContext, jira: JiraClient, projectIdOrKey: string, name: string, description: string): Promise<Version | undefined> {
   const remoteVersions = await jira.project.getVersions({ projectIdOrKey });
   context.logger.info(`Looking for version with name '${name}'`);
   const existing = _.find(remoteVersions, { name });
@@ -46,23 +46,30 @@ async function findOrCreateVersion(config: PluginConfig, context: GenerateNotesC
   let newVersion: Version;
   if (config.dryRun) {
     context.logger.info(`dry-run: making a fake release`);
-    newVersion = {
+    return newVersion = {
       name,
       id: 'dry_run_id',
     } as any;
   } else {
     const descriptionText = description || '';
-    newVersion = await jira.version.createVersion({
-      name,
-      projectId: projectIdOrKey as any,
-      description: descriptionText,
-      released: Boolean(config.released),
-      releaseDate: config.setReleaseDate ? (new Date().toISOString()) : undefined,
-    });
-  }
+    context.logger.info(`Attempting to create a release on project: ${projectIdOrKey}`)
+    try {
+      newVersion = await jira.version.createVersion({
+        name,
+        projectId: projectIdOrKey as any,
+        description: descriptionText,
+        released: Boolean(config.released),
+        releaseDate: config.setReleaseDate ? (new Date().toISOString()) : undefined,
+      });
 
-  context.logger.info(`Made new release '${newVersion.id}'`);
-  return newVersion;
+      context.logger.info(`Made new release '${newVersion.id}'`);
+      return newVersion;
+
+    } catch(err) {
+      context.logger.error(`Error while creating Jira release: ${JSON.stringify(err)}`);
+    }
+  }
+  return undefined;
 }
 
 async function editIssueFixVersions(config: PluginConfig, context: GenerateNotesContext, jira: JiraClient, newVersionName: string, releaseVersionId: string, issueKey: string): Promise<void> {
@@ -99,30 +106,43 @@ async function editIssueFixVersions(config: PluginConfig, context: GenerateNotes
   }
 }
 
+
 export async function success(config: PluginConfig, context: GenerateNotesContext): Promise<void> {
   const tickets = getTickets(config, context);
+  const jira = makeClient(config, context);
 
   context.logger.info(`Found ticket ${tickets.join(', ')}`);
 
+  // @ts-expect-error
+  const currentBranch = context.envCi.branch
+
+  let stage
+  if (currentBranch === 'master') {
+    stage = 'PRODUCTION'
+  } else if (currentBranch === 'daily') {
+    stage = 'DAILY'
+  }
+
   const versionTemplate = _.template(config.releaseNameTemplate ?? DEFAULT_VERSION_TEMPLATE);
-  const newVersionName = versionTemplate({ version: context.nextRelease.version });
+  const newVersionName = versionTemplate({ version: context.nextRelease.version, stage });
 
   const descriptionTemplate = _.template(config.releaseDescriptionTemplate ?? DEFAULT_RELEASE_DESCRIPTION_TEMPLATE);
   const newVersionDescription = descriptionTemplate({ version: context.nextRelease.version, notes: context.nextRelease.notes });
 
   context.logger.info(`Using jira release '${newVersionName}'`);
 
-  const jira = makeClient(config, context);
-
   const project = await jira.project.getProject({ projectIdOrKey: config.projectId });
+  context.logger.info(`Found Jira Project '${JSON.stringify(project)}'`);
   const releaseVersion = await findOrCreateVersion(config, context, jira, project.id, newVersionName, newVersionDescription);
 
   const concurrentLimit = pLimit(config.networkConcurrency || 10);
 
   const edits = tickets.map(issueKey =>
-    concurrentLimit(() =>
-      editIssueFixVersions(config, context, jira, newVersionName, releaseVersion.id, issueKey),
-    ),
+    concurrentLimit(() => {
+      if (releaseVersion) {
+        editIssueFixVersions(config, context, jira, newVersionName, releaseVersion.id, issueKey)
+      }
+    }),
   );
 
   await Promise.all(edits);
