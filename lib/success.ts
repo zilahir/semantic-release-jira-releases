@@ -1,10 +1,13 @@
-import JiraClient, { Version } from 'jira-connector';
-import * as _ from 'lodash';
+import JiraClient, { Config, Version } from 'jira-connector';
+// import * as _ from 'lodash';
+import { filter, find, template } from 'lodash';
 import pLimit from 'p-limit';
 
 import { makeClient } from './jira';
 import { DEFAULT_RELEASE_DESCRIPTION_TEMPLATE, DEFAULT_VERSION_TEMPLATE, GenerateNotesContext, PluginConfig } from './types';
 import { escapeRegExp } from './util';
+
+const dailyVersionRegexp = new RegExp(/\[DAILY\].*Account/)
 
 export function getTickets(config: PluginConfig, context: GenerateNotesContext): string[] {
   let patterns: RegExp[] = [];
@@ -35,7 +38,7 @@ export function getTickets(config: PluginConfig, context: GenerateNotesContext):
 async function findOrCreateVersion(config: PluginConfig, context: GenerateNotesContext, jira: JiraClient, projectIdOrKey: string, name: string, description: string): Promise<Version | undefined> {
   const remoteVersions = await jira.project.getVersions({ projectIdOrKey });
   context.logger.info(`Looking for version with name '${name}'`);
-  const existing = _.find(remoteVersions, { name });
+  const existing = find(remoteVersions, { name });
   if (existing) {
     context.logger.info(`Found existing release '${existing.id}'`);
     return existing;
@@ -106,6 +109,31 @@ async function editIssueFixVersions(config: PluginConfig, context: GenerateNotes
   }
 }
 
+async function editPreReleases(jira: JiraClient, projectIdOrKey: string, context: GenerateNotesContext, config: PluginConfig): Promise<any>{
+  const remoteVersions: Array<any> = await jira.project.getVersions({ projectIdOrKey })
+  const unReleasedPreReleases = filter(remoteVersions, (release) => !release.released && !release.archived && release.name.match(dailyVersionRegexp))
+  console.log('unReleasedPreReleases', unReleasedPreReleases)
+
+  const releases = unReleasedPreReleases.map((release) => {
+    context.logger.info(`Setting release ${release.name} to RELEASED'`);
+      if (!config.dryRun) {
+        try {
+          jira.version.editVersion({
+            versionId: release.id,
+            version: {
+                released: Boolean(true),
+                releaseDate: new Date().toISOString(),
+            }
+          })
+        } catch (err) {
+          context.logger.error(`Erorr while setting release to released state: ${JSON.stringify(err)}`)
+        }
+      }
+  })
+
+  await Promise.all(releases)
+}
+
 
 export async function success(config: PluginConfig, context: GenerateNotesContext): Promise<void> {
   const tickets = getTickets(config, context);
@@ -125,10 +153,10 @@ export async function success(config: PluginConfig, context: GenerateNotesContex
     }
   }
 
-  const versionTemplate = _.template(config.releaseNameTemplate ?? DEFAULT_VERSION_TEMPLATE);
+  const versionTemplate = template(config.releaseNameTemplate ?? DEFAULT_VERSION_TEMPLATE);
   const newVersionName = versionTemplate({ version: context.nextRelease.version, stage });
 
-  const descriptionTemplate = _.template(config.releaseDescriptionTemplate ?? DEFAULT_RELEASE_DESCRIPTION_TEMPLATE);
+  const descriptionTemplate = template(config.releaseDescriptionTemplate ?? DEFAULT_RELEASE_DESCRIPTION_TEMPLATE);
   const newVersionDescription = descriptionTemplate({ version: context.nextRelease.version, notes: context.nextRelease.notes });
 
   context.logger.info(`Using jira release '${newVersionName}'`);
@@ -138,6 +166,13 @@ export async function success(config: PluginConfig, context: GenerateNotesContex
   const releaseVersion = await findOrCreateVersion(config, context, jira, project.id, newVersionName, newVersionDescription);
 
   const concurrentLimit = pLimit(config.networkConcurrency || 10);
+
+  if (releaseVersion && stage === 'PRODUCTION') {
+    // here we need to set the previous _unreleased_ pre-releases_ to released
+    
+    await editPreReleases(jira, project.id, context, config)
+
+  }
 
   const edits = tickets.map(issueKey =>
     concurrentLimit(() => {
