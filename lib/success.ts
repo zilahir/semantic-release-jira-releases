@@ -113,14 +113,16 @@ export async function success(config: PluginConfig, context: GenerateNotesContex
 
   context.logger.info(`Found ticket ${tickets.join(', ')}`);
 
-  // @ts-expect-error
+  // @ts-ignore
   const currentBranch = context.envCi.branch
 
   let stage
-  if (currentBranch === 'master') {
-    stage = 'PRODUCTION'
-  } else if (currentBranch === 'daily') {
-    stage = 'DAILY'
+  if (currentBranch) {
+    if (currentBranch === 'master') {
+      stage = 'PRODUCTION'
+    } else if (currentBranch === 'daily') {
+      stage = 'DAILY'
+    }
   }
 
   const versionTemplate = _.template(config.releaseNameTemplate ?? DEFAULT_VERSION_TEMPLATE);
