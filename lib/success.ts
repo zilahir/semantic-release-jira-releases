@@ -2,6 +2,7 @@ import JiraClient, { Config, Version } from 'jira-connector';
 // import * as _ from 'lodash';
 import { filter, find, template } from 'lodash';
 import pLimit from 'p-limit';
+import { moveJiraTickets } from './generateNotes';
 
 import { makeClient } from './jira';
 import { DEFAULT_RELEASE_DESCRIPTION_TEMPLATE, DEFAULT_VERSION_TEMPLATE, GenerateNotesContext, PluginConfig } from './types';
@@ -134,6 +135,22 @@ async function editPreReleases(jira: JiraClient, projectIdOrKey: string, context
   await Promise.all(releases)
 }
 
+async function moveTicketToReleased(tickets: string[], jira: JiraClient, context: GenerateNotesContext, config: PluginConfig) {
+  if (!config.dryRun) {
+    const targetState = config.jiraTransitions!['release'].targetState
+    const transitions = tickets.map(ticket => {
+      if (!config.dryRun) {
+        try {
+          moveJiraTickets(ticket, jira, context, targetState.toString())
+        } catch(error) {
+          context.logger.error(`Error moving ticket: ${ticket}. Error: ${JSON.stringify(error)}`)
+        }
+      }
+    })
+    await Promise.all(transitions)
+  }
+}
+
 
 export async function success(config: PluginConfig, context: GenerateNotesContext): Promise<void> {
   const tickets = getTickets(config, context);
@@ -172,6 +189,8 @@ export async function success(config: PluginConfig, context: GenerateNotesContex
     
     await editPreReleases(jira, project.id, context, config)
 
+    // these are tickets being in production ready which doesnt belong to any ticket
+    await moveTicketToReleased(tickets, jira, context, config)
   }
 
   const edits = tickets.map(issueKey =>

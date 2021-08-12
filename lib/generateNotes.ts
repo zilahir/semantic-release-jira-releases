@@ -28,7 +28,7 @@ async function commentJiraTickets(ticket: string, jira: JiraClient, context: Gen
   }
 }
 
-async function moveJiraTickets(ticket: string, jira: JiraClient, context: GenerateNotesContext, targetState: string) {
+export async function moveJiraTickets(ticket: string, jira: JiraClient, context: GenerateNotesContext, targetState: string) {
   try {
     await jira.issue.transitionIssue({
       issueKey: ticket,
@@ -100,7 +100,7 @@ async function getNewStateLabel(ticket: string, newState: string, jira: JiraClie
             context.logger.error(`Jira ticket: ${ticket} is not in the correct status to be commented on`);     
           }
         })
-        ticketMoves = tickets.map(async (ticket: string) => {          
+        ticketMoves = tickets.map(async (ticket: string) => {
           const newStatusLabel = await getNewStateLabel(ticket, targetState.toString(), jira, context)
            if (newStatusLabel) {
             if (!config.dryRun) {
