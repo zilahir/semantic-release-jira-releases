@@ -1,4 +1,4 @@
-import JiraClient, { Config, Version } from 'jira-connector';
+import JiraClient, { Version } from 'jira-connector';
 // import * as _ from 'lodash';
 import { filter, find, template } from 'lodash';
 import pLimit from 'p-limit';
