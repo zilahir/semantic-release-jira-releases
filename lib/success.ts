@@ -135,8 +135,10 @@ async function editPreReleases(jira: JiraClient, projectIdOrKey: string, context
   await Promise.all(releases)
 }
 
-async function moveTicketToReleased(tickets: string[], jira: JiraClient, context: GenerateNotesContext, config: PluginConfig) {
+async function moveTicketToReleased(jira: JiraClient, context: GenerateNotesContext, config: PluginConfig) {
   if (!config.dryRun) {
+    const jiraIssues = await jira.search.search({ jql: "project='VACCA' AND type IN ('Bug', 'Task') AND status = 'Production ready' "});
+    const tickets = jiraIssues.issues.map(t => t.id)
     const targetState = config.jiraTransitions!['release'].targetState
     const transitions = tickets.map(ticket => {
       if (!config.dryRun) {
@@ -186,11 +188,14 @@ export async function success(config: PluginConfig, context: GenerateNotesContex
 
   if (releaseVersion && stage === 'PRODUCTION') {
     // here we need to set the previous _unreleased_ pre-releases_ to released
-    
+    context.logger.info('editing releases');
     await editPreReleases(jira, project.id, context, config)
+    context.logger.info('editing releases DONE');
 
-    // these are tickets being in production ready which doesnt belong to any ticket
-    await moveTicketToReleased(tickets, jira, context, config)
+    // these are tickets being in production ready which doesnt belong to any commits
+    context.logger.info('moving tickets without commits');
+    await moveTicketToReleased(jira, context, config)
+    context.logger.info('moving tickets without commits DONE');
   }
 
   const edits = tickets.map(issueKey =>
