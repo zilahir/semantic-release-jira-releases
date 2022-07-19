@@ -165,7 +165,7 @@ export async function success(config: PluginConfig, context: GenerateNotesContex
 
   let stage
   if (currentBranch) {
-    if (currentBranch === 'master') {
+    if (currentBranch === 'release') {
       stage = 'PRODUCTION'
     } else if (currentBranch === 'daily') {
       stage = 'DAILY'
